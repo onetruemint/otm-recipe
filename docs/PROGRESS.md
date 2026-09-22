@@ -33,13 +33,97 @@ those can proceed normally.
 
 - [x] 0.1 — Repo & app scaffolding
 - [ ] 0.2 — EAS config
-- [ ] 0.3 — Supabase local + prod init & type-gen
+- [x] 0.3 — Supabase local + prod init & type-gen
 - [ ] 0.4 — Sentry
 - [ ] 0.5 — CI
 
 See `STORIES.md` for the full breakdown of each story.
 
 ## Log
+
+### 2026-09-21 — Story 0.3: Supabase local + prod init & type-gen
+
+Built:
+
+- Ran `supabase init` (CLI 2.117.0, via `npx supabase`) targeting the
+  existing `/supabase` directory. It created `supabase/config.toml` and
+  `supabase/.gitignore`, and left the existing `migrations/`, `seed/`,
+  `functions/`, and `tests/` folders (with their `.gitkeep`s) untouched.
+  Note for future sessions: `supabase init` always creates its project files
+  under `<cwd>/supabase/`, so it must be run from the **repo root**, not
+  from inside `/supabase` itself and not with `--workdir supabase` (both of
+  those produce a nested `supabase/supabase/`).
+- Set `project_id = "mint-recipe"` in `config.toml` (was defaulting to
+  `"supabase"`, the directory name).
+- Pointed `db.seed.sql_paths` at `./seed/*.sql` instead of the CLI's default
+  `./seed.sql`, to match our existing `/supabase/seed` folder convention
+  (Section 5.1 of the plan) rather than a single top-level file. No seed
+  files exist yet — that's Phase 3.
+- Created the production Supabase project via Supabase MCP tools: name
+  `mint-recipe-prod`, org `OneTrueMint` (`exsjpitdelqwejuxscqc`), region
+  `us-east-1`, project ref `dzimtfgwwejaaofqrqkl`, **free tier** (did not
+  purchase/upgrade a paid plan — that's the owner's call; see TODO below).
+  No tables exist in it yet; that starts in Phase 1.
+- Added `mobile/.env.example` (documented, no real values) and a real,
+  gitignored `mobile/.env`. `mobile/.gitignore` only ignored `.env*.local`
+  before this change, which does **not** match a plain `.env` — added an
+  explicit `.env` line so it's actually excluded. Verified `.env` does not
+  show up in `git status` after the change.
+- `mobile/.env` is currently populated with the **production** project's
+  URL and anon key, not local ones — see deviation below.
+- Documented environment setup and type regeneration in `mobile/README.md`
+  ("Environment setup" section).
+- Added `mobile/src/lib/database.types.ts` and wired
+  `npm run db:types` (`mobile/package.json`) to
+  `npx supabase gen types typescript --local --workdir .. > src/lib/database.types.ts`,
+  runnable from `/mobile`. Verified the command resolves the project
+  correctly (it reaches the "connect to Docker" step rather than erroring on
+  path), consistent with the Docker blocker below.
+
+Decisions / deviations:
+
+- **Docker is not available in this environment**: `docker ps` / `supabase
+  start` both fail with `failed to connect to the docker API at
+  npipe:////./pipe/dockerDesktopLinuxEngine` — the Docker CLI is installed
+  (v29.4.2) but the daemon isn't running here. Per the story instructions
+  this doesn't block the rest of the story, but it does mean:
+  - `supabase start` has **not** been verified end-to-end in this session.
+    **TODO(next session / owner):** run `supabase start` from the repo root
+    on a machine with Docker Desktop running, confirm it comes up cleanly,
+    and swap the local `API URL` / `anon key` it prints into `mobile/.env`
+    for day-to-day development (prod is fine for occasional use, but every
+    dev hitting prod during Phase 1+ schema churn is not the intended
+    workflow).
+  - `mobile/src/lib/database.types.ts` is a **hand-written placeholder**
+    matching the standard empty-schema shape the CLI emits for a project
+    with no tables — it was not produced by actually running the
+    generator (no Docker for `--local`, no CLI auth for a remote
+    generation against `mint-recipe-prod`). It's marked as such in a
+    top-of-file comment. Regenerate for real via `npm run db:types` once
+    Docker is available, and again after every migration from Phase 1
+    onward.
+- `TODO(owner): upgrade mint-recipe-prod to a paid plan before beta, per plan
+  Section 5.2 — free tier projects auto-pause after inactivity.` The other
+  Supabase projects already in the OneTrueMint org (`Atomic Void`,
+  `landing`, `macromaxer`, `Savest`) are all showing `INACTIVE` status,
+  which is exactly this failure mode — a live reminder not to leave this one
+  unattended once real usage starts.
+- Did not touch EAS, Sentry, or CI config (stories 0.2, 0.4, 0.5). This
+  worktree is shared with a concurrent session doing 0.2 — `mobile/app.json`,
+  `mobile/package-lock.json`, and `mobile/eas.json` had uncommitted changes
+  from that work when this session started; left them alone and did not
+  stage them in this story's commit.
+
+What's left: stories 0.2 (in progress concurrently), 0.4, 0.5. Local
+Supabase verification (see TODO above) once Docker is available. Phase 1
+will add the first migration, at which point `mobile/.env` and
+`database.types.ts` should move to real local-dev values.
+
+Open questions / blockers for the owner (jmyeh51@gmail.com):
+
+- See the paid-plan TODO above — a financial decision, not made here.
+- Please verify `supabase start` locally when convenient; this session
+  could not confirm it due to no running Docker daemon.
 
 ### 2026-09-21 — Story 0.1: Repo & app scaffolding
 
