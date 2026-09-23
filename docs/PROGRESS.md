@@ -35,11 +35,78 @@ those can proceed normally.
 - [ ] 0.2 — EAS config
 - [x] 0.3 — Supabase local + prod init & type-gen
 - [ ] 0.4 — Sentry
-- [ ] 0.5 — CI
+- [x] 0.5 — CI
 
 See `STORIES.md` for the full breakdown of each story.
 
 ## Log
+
+### 2026-09-22 — Story 0.5: CI
+
+Built:
+
+- Added Jest to `/mobile`: `jest-expo` (`~57.0.5`, matching the installed
+  `expo ~57.0.24`), `jest`, and `@types/jest`, all resolved via
+  `npx expo install ... --dev` for SDK-compatible versions. Configured via
+  the `jest` key in `mobile/package.json` (`"preset": "jest-expo"`), added
+  `"jest"` to `types` in `mobile/tsconfig.json`, and added `npm test`
+  (`jest --watchAll`, per Expo's own docs — GitHub Actions sets `CI=true`
+  automatically, which makes Jest ignore `--watchAll` and run once, so the
+  CI step passes `--watchAll=false` explicitly to be unambiguous either
+  way). Added one trivial smoke test at `mobile/src/lib/smoke.test.ts`
+  (`1 + 1 === 2`) purely so the CI job has something real to execute — real
+  coverage starts with Phase 2's shared modules per Section 9/11 of the
+  plan.
+- Added `.github/workflows/ci.yml` with two jobs, triggered on every pull
+  request and on push to `main`:
+  - `mobile`: `actions/checkout@v4`, `actions/setup-node@v4` (Node 22, npm
+    cache keyed on `mobile/package-lock.json`), `npm ci`, then
+    `npm run lint`, `npm run typecheck`, `npm test -- --watchAll=false`,
+    all with `working-directory: mobile`.
+  - `supabase`: `actions/checkout@v4`, `supabase/setup-cli@v1`, then
+    `supabase start`, `supabase db reset` (applies migrations — currently
+    none, which resets cleanly to an empty schema), then a guarded pgTAP
+    step (`working-directory: supabase`).
+- Verified this is not an assumption: this session actually had a running
+  Docker daemon (unlike the one noted in the 0.1/0.3 log entries), so I ran
+  `supabase start`, `supabase db reset`, and `supabase test db` for real
+  against this repo's empty `supabase/tests/` directory before writing the
+  workflow. **`supabase test db` exits `1`** ("no pgTAP tests found ...")
+  when there are no `.sql`/`.pg` test files — it does **not** pass
+  gracefully on an empty directory, contrary to what the task brief
+  hoped. So the CI step first checks
+  `find tests -type f \( -name '*.sql' -o -name '*.pg' \) | grep -q .`
+  and only invokes `supabase test db` when that finds a match; otherwise it
+  echoes a message and exits 0. This will start running real pgTAP tests
+  automatically once Phase 1 adds the first ones under `supabase/tests/` —
+  no workflow change needed then. Stopped the local stack
+  (`supabase stop`) afterward to leave Docker clean.
+- Validated the workflow YAML with `actionlint` (downloaded the v1.7.12
+  Windows binary directly since it isn't preinstalled here) — zero
+  findings.
+- No new secrets required: `supabase/setup-cli` and all local CLI commands
+  (`start`, `db reset`, `test db`) work against the local Dockerized stack
+  with no auth. Did not touch EAS or Sentry config/secrets (stories 0.2,
+  0.4).
+
+Decisions / deviations:
+
+- Node 22 for CI (no `.nvmrc`/`engines` pin existed in `/mobile` to match;
+  22 is the current LTS as of this session).
+- Kept the smoke test intentionally trivial and decoupled from app code
+  (no `@testing-library/react-native`, no component render) to avoid
+  coupling CI setup to code that will change under Phase 2 — per the task
+  brief's "don't over-build this."
+- Did not check the 0.2 or 0.4 boxes above — those stories are owned by
+  other concurrent sessions/PRs and aren't merged into this branch, so I
+  can't confirm their state from here.
+
+What's left: stories 0.2 (EAS) and 0.4 (Sentry), in progress elsewhere.
+Once both land, Phase 0's "done when" criteria (dev build runs on iOS
+simulator and Android emulator; local Supabase starts; CI passes) should
+all be met, and Phase 1 (Accounts and core schema) is next.
+
+Open questions / blockers for the owner (jmyeh51@gmail.com): none.
 
 ### 2026-09-21 — Story 0.3: Supabase local + prod init & type-gen
 
