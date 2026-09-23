@@ -32,7 +32,7 @@ those can proceed normally.
 ## Phase 0 status
 
 - [x] 0.1 — Repo & app scaffolding
-- [ ] 0.2 — EAS config
+- [x] 0.2 — EAS config
 - [x] 0.3 — Supabase local + prod init & type-gen
 - [x] 0.4 — Sentry
 - [x] 0.5 — CI
@@ -97,17 +97,90 @@ Decisions / deviations:
   (no `@testing-library/react-native`, no component render) to avoid
   coupling CI setup to code that will change under Phase 2 — per the task
   brief's "don't over-build this."
-- This branch started from before story 0.4 (Sentry) merged to `main`;
-  merged `main` back in to pick it up before opening the PR, which is why
-  the 0.4 box below is already checked — that work is the entry just below
+- This branch started from before stories 0.4 (Sentry) and 0.2 (EAS) merged
+  to `main`; merged `main` back in twice (once for each, as they landed) to
+  pick them up before this PR could merge conflict-free, which is why those
+  boxes below are already checked — that work is the two entries just below
   this one, not something done in this story.
 
-What's left: story 0.2 (EAS), in progress elsewhere. Once it lands, Phase 0's
-"done when" criteria (dev build runs on iOS simulator and Android emulator;
-local Supabase starts; CI passes) should all be met, and Phase 1 (Accounts
-and core schema) is next.
+What's left: nothing for Phase 0 — with this story, all five boxes above are
+checked. **Phase 0 is complete** per the plan's Section 10 "done when"
+criteria, modulo the on-device verification of the EAS builds still marked
+pending in the 0.2 entry below (the builds themselves succeeded; installing
+and booting them on an actual simulator/emulator hasn't been confirmed from
+any agent session yet — no simulator/emulator has been available in this
+environment). Phase 1 (Accounts and core schema) is next.
 
-Open questions / blockers for the owner (jmyeh51@gmail.com): none.
+Open questions / blockers for the owner (jmyeh51@gmail.com): please confirm
+the two EAS development builds from the 0.2 entry below actually install and
+boot on an iOS simulator and Android emulator, to fully close out Phase 0's
+"done when" criteria.
+
+### 2026-09-22 — Story 0.2: EAS config
+
+Built:
+
+- Created the EAS project `@jyeh20/mobile` (project ID
+  `0cfb3e98-decc-49d0-af94-de6d478d3887`) via `eas init`, linked in
+  `mobile/app.json` under `expo.extra.eas.projectId` / `expo.owner`.
+- Added `mobile/eas.json` with `development`, `preview`, and `production`
+  build profiles (standard Expo convention). `development` sets
+  `developmentClient: true`, `distribution: "internal"`, and
+  `ios.simulator: true` so an iOS development build can be produced without
+  an Apple Developer Program membership. `production` sets
+  `autoIncrement: true`. Added an empty `submit.production` block as a
+  placeholder for EAS Submit, which needs store accounts we don't have yet.
+- Installed `expo-dev-client` (`npx expo install`), required for
+  `developmentClient: true` builds.
+- Set placeholder reverse-DNS bundle identifiers in `mobile/app.json`:
+  `ios.bundleIdentifier` and `android.package` both
+  `com.onetruemint.recipeapp`. **These are placeholders** — revisit once
+  real Apple Developer / Google Play accounts exist and a final product
+  name is chosen (see the Accounts note above; `expo.name` stays the
+  `APP_NAME` placeholder per the plan, unchanged here).
+- Ran both development builds via EAS Build using the Expo/EAS account
+  (`eas whoami` confirmed authenticated as `jyeh20`):
+  - iOS simulator build (`eas build --profile development --platform ios`):
+    succeeded. Build:
+    https://expo.dev/accounts/jyeh20/projects/mobile/builds/81ab76d8-ccbe-4178-9c23-f1c21a5eda4b
+  - Android development build (`eas build --profile development --platform
+    android`), using an EAS-managed debug keystore (no Google Play/Cloud
+    account needed): succeeded. Build:
+    https://expo.dev/accounts/jyeh20/projects/mobile/builds/57b186f5-1bb9-4758-8593-3a496f84e30d
+  - Neither build needed an Apple Developer or Google Play/Cloud account,
+    consistent with the Accounts note above.
+- `npm run typecheck` and `npm run lint` pass with the new dependency and
+  config in place.
+
+Decisions / deviations:
+
+- Both builds were originally triggered from a different local checkout of
+  this repo (a sibling worktree used by the concurrent 0.3/Supabase
+  session, `P:\projects\mint-recipe`) before the mixup was caught and
+  reverted; `app.json`/`eas.json` in *this* worktree were then re-created
+  with identical content and re-linked to the same EAS project (by
+  project ID) that the builds ran under, so the committed config here
+  matches exactly what actually built. The builds themselves were **not**
+  re-run a second time from this worktree — re-running would hit the
+  identical project with identical `app.json`/`eas.json` content, so it
+  would only burn EAS build minutes without changing the result.
+- **On-device verification is pending.** This environment has no iOS
+  simulator or Android emulator available, so the next session (or the
+  owner) should download the two builds above and confirm they install and
+  boot: the iOS one via the Expo/EAS "Open in Simulator" flow, the Android
+  one as an installable APK/AAB in an emulator or device. Both EAS builds
+  themselves completed successfully, which is the part verifiable from
+  here.
+- Did not touch Supabase, Sentry, or CI config — those are stories 0.3,
+  0.4, 0.5.
+
+What's left: on-device verification of the two builds above (see
+deviations); stories 0.4, 0.5.
+
+Open questions / blockers for the owner (jmyeh51@gmail.com): none. Bundle
+identifiers are placeholders as noted — flag before any real App
+Store/Play Store submission if `com.onetruemint.recipeapp` isn't the final
+choice.
 
 ### 2026-09-21 — Story 0.4: Sentry
 
