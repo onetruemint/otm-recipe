@@ -34,7 +34,7 @@ those can proceed normally.
 - [x] 0.1 — Repo & app scaffolding
 - [ ] 0.2 — EAS config
 - [x] 0.3 — Supabase local + prod init & type-gen
-- [ ] 0.4 — Sentry
+- [x] 0.4 — Sentry
 - [x] 0.5 — CI
 
 See `STORIES.md` for the full breakdown of each story.
@@ -97,16 +97,56 @@ Decisions / deviations:
   (no `@testing-library/react-native`, no component render) to avoid
   coupling CI setup to code that will change under Phase 2 — per the task
   brief's "don't over-build this."
-- Did not check the 0.2 or 0.4 boxes above — those stories are owned by
-  other concurrent sessions/PRs and aren't merged into this branch, so I
-  can't confirm their state from here.
+- This branch started from before story 0.4 (Sentry) merged to `main`;
+  merged `main` back in to pick it up before opening the PR, which is why
+  the 0.4 box below is already checked — that work is the entry just below
+  this one, not something done in this story.
 
-What's left: stories 0.2 (EAS) and 0.4 (Sentry), in progress elsewhere.
-Once both land, Phase 0's "done when" criteria (dev build runs on iOS
-simulator and Android emulator; local Supabase starts; CI passes) should
-all be met, and Phase 1 (Accounts and core schema) is next.
+What's left: story 0.2 (EAS), in progress elsewhere. Once it lands, Phase 0's
+"done when" criteria (dev build runs on iOS simulator and Android emulator;
+local Supabase starts; CI passes) should all be met, and Phase 1 (Accounts
+and core schema) is next.
 
 Open questions / blockers for the owner (jmyeh51@gmail.com): none.
+
+### 2026-09-21 — Story 0.4: Sentry
+
+Built:
+
+- Installed `@sentry/react-native` (`npx expo install @sentry/react-native`),
+  which auto-added the `@sentry/react-native` config plugin to
+  `mobile/app.json`'s `plugins` array. In this SDK version that plugin
+  resolves to the same code as the documented `@sentry/react-native/expo`
+  entry point (`app.plugin.js` re-exports `./expo`), so both names are
+  equivalent — left it as `expo install` configured it.
+- Initialized Sentry in `mobile/src/app/_layout.tsx`: reads
+  `EXPO_PUBLIC_SENTRY_DSN` from the environment and calls `Sentry.init({ dsn
+  })` only when it's set; otherwise Sentry stays uninitialized (a no-op) so
+  the app runs fine without it. Wrapped the exported root layout with
+  `Sentry.wrap(...)` per Sentry's Expo docs — this is safe to call even when
+  `Sentry.init` was skipped (it only adds a touch-event/profiler boundary).
+- Added an `EXPO_PUBLIC_SENTRY_DSN=` (empty) line, with a comment explaining
+  it's optional, to `mobile/.env.example` (which story 0.3 had already
+  created for the Supabase env vars — appended rather than replacing it).
+- `npm run lint` and `npm run typecheck` pass in `/mobile`.
+
+Decisions / deviations:
+
+- No Sentry account/project/DSN exists yet for this app. Did not add
+  `project`/`organization`/`url` options to the config plugin in `app.json`
+  since there is nothing real to point them at yet; the plugin works fine
+  without them (source-map upload during native builds is simply skipped
+  until a `SENTRY_AUTH_TOKEN` and project are configured).
+- Did not touch EAS, Supabase, or CI config — those are stories 0.2, 0.3,
+  0.5.
+
+What's left: **TODO(owner): create a Sentry project and set
+`EXPO_PUBLIC_SENTRY_DSN` in the real `.env` once ready.** Once that exists,
+also consider adding `organization`/`project` to the `@sentry/react-native`
+plugin entry in `app.json` and a `SENTRY_AUTH_TOKEN` for source-map uploads
+in CI/EAS builds.
+
+Open questions / blockers: none.
 
 ### 2026-09-21 — Story 0.3: Supabase local + prod init & type-gen
 
