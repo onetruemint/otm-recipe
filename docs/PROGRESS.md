@@ -50,6 +50,18 @@ See `STORIES.md` for the full breakdown of each story.
 
 ## Log
 
+### 2026-09-24 — Story 1.4 follow-up: live-URL verification
+
+PR #7 merged to `main`. The `Deploy legal pages` GitHub Actions workflow
+ran automatically on that merge and completed successfully. Verified both
+URLs are actually live:
+
+- `curl -I https://onetruemint.github.io/otm-recipe/terms.html` → `200 OK`
+- `curl -I https://onetruemint.github.io/otm-recipe/privacy.html` → `200 OK`
+
+This closes the "TODO(owner or next session)" left in the 1.4 entry below —
+no further action needed on Pages for this story.
+
 ### 2026-09-23 — Story 1.4: Terms and privacy placeholder pages
 
 Built:
