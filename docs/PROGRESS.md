@@ -39,7 +39,86 @@ those can proceed normally.
 
 See `STORIES.md` for the full breakdown of each story.
 
+## Phase 1 status
+
+- [ ] 1.1 — Schema (enums, profiles, blocks, blocked_terms, RLS)
+- [ ] 1.2 — Sign-in screen
+- [ ] 1.3 — Session persistence, routing, onboarding
+- [x] 1.4 — Terms and privacy placeholder pages
+- [ ] 1.5 — Temporary settings screen
+
+Story numbering here follows the plan's Section 10 Phase 1 item list
+(`recipe-app-mvp-plan.md`); a full `STORIES.md` breakdown for Phase 1 hasn't
+been written yet — whichever session gets there first should add it.
+
 ## Log
+
+### 2026-09-23 — Story 1.4: Terms and privacy placeholder pages
+
+Built:
+
+- Added `/legal/terms.html` and `/legal/privacy.html`: plain static HTML
+  (shared `/legal/style.css`, no build step, no framework), each for
+  `APP_NAME` per the plan's placeholder-name convention. Both carry a
+  visible draft banner: "Draft placeholder — not final. Real terms,
+  including required content-moderation clauses, are written before public
+  launch (see project plan Phase 10)." `terms.html` covers user-generated
+  content, no warranty, and a contact-email placeholder. `privacy.html`
+  covers what's collected (account info from Apple/Google sign-in,
+  username, avatar, recipe content and photos) and that in-app account
+  deletion removes it.
+- Put these under a new top-level `/legal` directory (not `/docs`, which is
+  internal project docs).
+- Enabled GitHub Pages for `onetruemint/otm-recipe` via `gh api
+  repos/onetruemint/otm-recipe/pages -X POST -f build_type=workflow`.
+  GitHub Pages' branch-source mode only supports serving from repo root or
+  `/docs`, not an arbitrary folder like `/legal`, so used Pages' newer
+  "workflow" build type instead: added
+  `.github/workflows/pages.yml`, which runs `actions/configure-pages`,
+  `actions/upload-pages-artifact` (`path: legal`), and
+  `actions/deploy-pages` on every push to `main` that touches `legal/**`
+  (plus `workflow_dispatch` for manual runs).
+- **Final URLs** (site root serves the contents of `/legal`, so no
+  `/legal/` path segment):
+  - Terms: `https://onetruemint.github.io/otm-recipe/terms.html`
+  - Privacy: `https://onetruemint.github.io/otm-recipe/privacy.html`
+  - These are stable now — story 1.2's sign-in screen and later Settings
+    can link to them regardless of merge order.
+
+Decisions / deviations:
+
+- **Live verification is pending merge to `main`.** GitHub's
+  `workflow_dispatch` API refuses to run a workflow that isn't yet present
+  on the repository's default branch (`gh workflow run pages.yml --ref
+  <this-branch>` failed with "workflow pages.yml not found on the default
+  branch"), and the `push` trigger is also scoped to `main`. So the
+  deploy-pages workflow has not run yet and the URLs above are not live as
+  of this commit — they will build automatically on the first merge of
+  `legal/**` or `.github/workflows/pages.yml` into `main`. Per the task
+  brief's guidance not to block on things outside this session's control,
+  documenting this rather than stopping.
+- Used `gh api ... -f build_type=workflow` rather than the Pages UI/CLI
+  wizard (which defaults to branch-source mode and would have forced a
+  `gh-pages` branch or root/`/docs` restriction) — this was the more direct
+  path to serving `/legal` specifically, per the task's own suggestion to
+  fall back to a `gh-pages`-style Actions workflow if a plain folder source
+  isn't supported.
+- Added a "Phase 1 status" checklist section above (didn't exist yet) with
+  all five Phase 1 stories inferred from the plan's Section 10 item list,
+  since `STORIES.md` doesn't have a Phase 1 breakdown yet. Only checked
+  1.4. Concurrent sessions on 1.1/1.2 may add the same section in parallel
+  — if so, resolve the merge conflict by keeping all five checkboxes with
+  whichever ones are actually done checked, rather than picking one side.
+
+What's left: **TODO(owner or next session): after this PR merges to
+`main`, confirm the Pages deploy workflow ran (Actions tab) and `curl -I`
+both URLs above to confirm they're live (200, not 404).** A full
+`STORIES.md` Phase 1 breakdown (whichever session gets there first).
+Phase 10 replaces these with final, lawyer-reviewed terms/privacy before
+public launch, per the plan.
+
+Open questions / blockers for the owner (jmyeh51@gmail.com): none blocking
+— just the post-merge live-URL confirmation above.
 
 ### 2026-09-22 — Story 0.5: CI
 
