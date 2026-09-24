@@ -27,12 +27,15 @@ You can start developing by editing the files inside the **app** directory. This
 
 ## Environment setup
 
-This app talks to Supabase directly (no custom API server). It reads two
-env vars, both required, from `.env` (via `expo-constants`' automatic
-`EXPO_PUBLIC_*` inlining — no extra config needed):
+This app talks to Supabase directly (no custom API server). It reads env
+vars from `.env` (via `expo-constants`' automatic `EXPO_PUBLIC_*` inlining —
+no extra config needed):
 
-- `EXPO_PUBLIC_SUPABASE_URL`
-- `EXPO_PUBLIC_SUPABASE_ANON_KEY`
+- `EXPO_PUBLIC_SUPABASE_URL` — required.
+- `EXPO_PUBLIC_SUPABASE_ANON_KEY` — required.
+- `EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID`, `EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID` —
+  optional for now. Google sign-in shows a "not configured" error until the
+  owner sets these (see `.env.example` and `docs/PROGRESS.md`).
 
 To set up a new checkout:
 

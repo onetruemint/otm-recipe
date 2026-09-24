@@ -42,7 +42,7 @@ See `STORIES.md` for the full breakdown of each story.
 ## Phase 1 status
 
 - [x] 1.1 — Database migration & RLS foundation
-- [ ] 1.2 — Supabase Auth config & sign-in screen
+- [x] 1.2 — Supabase Auth config & sign-in screen
 - [ ] 1.3 — Session routing, onboarding, settings
 - [x] 1.4 — Terms and privacy placeholder pages
 
@@ -61,6 +61,165 @@ URLs are actually live:
 
 This closes the "TODO(owner or next session)" left in the 1.4 entry below —
 no further action needed on Pages for this story.
+
+### 2026-09-23 — Story 1.2: Supabase Auth config & sign-in screen
+
+Built everything that can be built without a real Apple Developer or Google
+Cloud OAuth account, per the Accounts note above, so the only remaining work
+once the owner has those accounts is filling in config values — no code
+changes.
+
+- `mobile/src/lib/supabase.ts`: the shared Supabase client, per plan Section
+  5's tech stack row. `createClient<Database>(...)` from
+  `EXPO_PUBLIC_SUPABASE_URL`/`EXPO_PUBLIC_SUPABASE_ANON_KEY`, typed against
+  `database.types.ts` (now the real generated types, since story 1.1's
+  migration landed on `main` before this session started). Session storage
+  is AsyncStorage-backed (`@react-native-async-storage/async-storage`) with
+  `autoRefreshToken: true`, `persistSession: true`, `detectSessionInUrl:
+  false`, plus the `AppState`-driven `startAutoRefresh`/`stopAutoRefresh`
+  toggle Supabase's React Native guide recommends (RN has no window-focus
+  event to drive the refresh timer otherwise). Throws at import time if the
+  env vars are missing — intentional, since Supabase credentials are
+  assumed already configured per the Accounts note (unlike the Google/Apple
+  pieces below, which degrade gracefully instead). Exports just `supabase`,
+  per the task's ask to keep the interface simple for story 1.3 to reuse.
+- `mobile/src/lib/auth.ts`: `signInWithApple()` and `signInWithGoogle()`.
+  Both get a native ID token from the platform SDK
+  (`expo-apple-authentication` / `@react-native-google-signin/google-signin`)
+  and call `supabase.auth.signInWithIdToken({ provider, token })`. Each
+  returns a `SignInResult` (`{status: 'ok' | 'cancelled' | 'error', message?}`)
+  instead of throwing, so the caller never has to distinguish "user
+  cancelled" from "real failure" — cancellation is silent, everything else
+  surfaces `message`. Apple cancellation is detected via the
+  `ERR_REQUEST_CANCELED` rejection code documented by
+  `expo-apple-authentication`; Google cancellation comes back as a `{type:
+  'cancelled'}` response object from `GoogleSignin.signIn()` in this SDK
+  version (not a thrown error, which older docs/examples suggest — verified
+  against the installed package's own `.d.ts` files, since AGENTS.md warns
+  Expo/RN APIs move fast and not to trust training data). `signInWithGoogle`
+  short-circuits with a "not configured" error, without touching the native
+  SDK at all, when `EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID` is empty — this is the
+  "fails gracefully" behavior the task asked to verify, and it's covered by
+  a test (see below). Apple only shares the user's name on their very first
+  sign-in, so `signInWithApple` opportunistically saves it via
+  `supabase.auth.updateUser` when present.
+- `mobile/src/app/sign-in.tsx`: Apple button (iOS only, via
+  `expo-apple-authentication`'s native `AppleAuthenticationButton`) and
+  Google button (`GoogleSigninButton`, both platforms), each wired to the
+  helpers above. Shows an inline error message (no crash) on failure;
+  clears it on the next attempt. Links to the terms and privacy pages using
+  the exact URLs story 1.4 published
+  (`https://onetruemint.github.io/otm-recipe/terms.html` /
+  `.../privacy.html`) — this session started after 1.4 merged to `main`, so
+  these are the real URLs, not placeholders (the task brief anticipated
+  this might still be in flight and suggested placeholders of the same
+  shape, which turned out to match exactly). Not wired into any navigator —
+  session-based routing (deciding when a signed-out user actually lands
+  here) is story 1.3's job, per the task brief's explicit instruction not
+  to touch that.
+- Packages added via `npx expo install`: `@supabase/supabase-js`,
+  `@react-native-async-storage/async-storage`, `react-native-url-polyfill`
+  (Supabase's documented RN dependency for `URL`/`structuredClone` gaps),
+  `expo-apple-authentication`, `@react-native-google-signin/google-signin`.
+  `expo install` auto-added the `@react-native-google-signin/google-signin`
+  config plugin to `app.json`; added `expo-apple-authentication` to the
+  plugins array and `ios.usesAppleSignIn: true` by hand (Expo's install
+  step didn't add either automatically).
+- `mobile/.env.example`: added `EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID` and
+  `EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID`, both empty, each with a comment on
+  where to get the value and a `TODO(owner): needs Google Cloud OAuth`
+  marker, plus a `TODO(owner): needs Apple Developer account` marker
+  documenting that Apple sign-in on Android needs a Services ID and
+  redirect URL configured directly in the Supabase dashboard (not an env
+  var — there's no code-side client ID for that flow). Updated
+  `mobile/README.md`'s "Environment setup" section to match.
+- Tests: `mobile/src/lib/auth.test.ts` (5 cases) covers the two behaviors
+  the task asked to verify without real credentials — cancellation
+  handled silently for both providers, and Google's "not configured"
+  path never touches the native SDK — plus the success path for each
+  provider, with `expo-apple-authentication`, `@react-native-google-signin/
+  google-signin`, and `@/lib/supabase` all mocked. Each test reloads the
+  module registry (`jest.resetModules()`) because `auth.ts` reads its
+  Google env vars once at module load time, so exercising both the
+  "configured" and "not configured" states needs fresh module instances
+  per test, not just a changed `process.env`.
+  `mobile/src/app/sign-in.test.tsx` (2 cases, `react-test-renderer`)
+  confirms the screen renders without crashing and that a failed
+  Google sign-in surfaces the inline error text instead of throwing.
+  Getting these green required two small, pre-existing-gap fixes
+  unrelated to this story's logic but necessary to run any component
+  test at all: `mobile/node_modules` didn't exist yet in this worktree
+  (this is apparently the first session to run a full `npm ci` here —
+  ran it before installing anything new), and Jest had no
+  `moduleNameMapper` for `.css` imports (`src/constants/theme.ts` imports
+  `src/global.css` for the web build), so any test that transitively
+  imported `theme.ts` — which is most of the component tree, via
+  `themed-text`/`themed-view` — failed on a CSS parse error. Added
+  `mobile/scripts/jest-css-stub.js` and a `moduleNameMapper` entry in
+  `package.json`'s `jest` config to stub `.css` imports to `{}` in tests.
+- `npm run lint`, `npm run typecheck`, and `npm test -- --watchAll=false`
+  all pass. `npm run format:check` currently flags nearly every file in
+  `/mobile`, including ones untouched by this session (e.g. `README.md`,
+  `_layout.tsx`) — pre-existing, not something introduced here, and not
+  part of the CI gate in `ci.yml` (which only runs lint/typecheck/test),
+  so left alone rather than reformatting the whole tree in an auth PR.
+
+Decisions / deviations:
+
+- This branch started 6 commits behind `main`; both story 1.1 (db
+  migration — merged as PR #6) and story 1.4 (terms/privacy pages — merged
+  as PR #7) had landed by the time this session started. Fast-forward
+  merged `main` in before opening a PR, per the task brief's instruction.
+  No conflicts — 1.1 only touched `database.types.ts` on the mobile side
+  (regenerated with the real `profiles` table), which this story's
+  `supabase.ts` now imports the benefit of.
+- Did not attempt a real end-to-end sign-in — no real Apple Developer or
+  Google Cloud OAuth credentials exist in this environment, per the
+  Accounts note. Verified instead via typecheck, lint, and the two test
+  files above, plus manual reasoning about the "not configured" and
+  cancellation code paths.
+- `GoogleSignin.configure()` is called lazily, on first `signInWithGoogle()`
+  call, not at module load — avoids doing native setup work for a button
+  the user may never press, and avoids configuring with an empty
+  `webClientId` before we've even checked whether one exists.
+- Left `@react-native-google-signin/google-signin`'s `iosUrlScheme` plugin
+  option unset in `app.json` — that value is the *reversed* iOS OAuth
+  client ID (e.g. `com.googleusercontent.apps.XXXX`), a separate value
+  from the client ID itself, needed only for the native URL-scheme
+  redirect. There's no real iOS client ID yet to reverse, and `app.json` is
+  static (no `app.config.js` in this repo, so it can't be derived from an
+  env var at build time either). **TODO(owner or next session): once a
+  real Google Cloud iOS OAuth client ID exists, add its reversed form as
+  `iosUrlScheme` to the `@react-native-google-signin/google-signin` plugin
+  entry in `mobile/app.json`** — see the library's Expo setup docs.
+
+What's left — itemized, everything below needs a real credential or
+dashboard action only the owner can take:
+
+1. **Google Cloud OAuth**: create iOS and Web OAuth client IDs in Google
+   Cloud Console, set `EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID` and
+   `EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID` in the real `.env`, and add the
+   reversed iOS client ID as `iosUrlScheme` in `app.json` (see deviation
+   above). Once these three things are done, Google sign-in should work
+   with no code changes.
+2. **Apple Developer Program membership**: needed for the
+   `usesAppleSignIn` capability to actually work in a real (non-simulator)
+   build, and for Sign in with Apple on Android — which per plan Section 5
+   goes through Supabase's OAuth browser flow, not this session's native
+   code path at all. That needs an Apple Services ID and a redirect URL
+   configured directly in Authentication → Providers → Apple in the
+   Supabase dashboard; nothing to wire up in the app itself for that part.
+3. Once both of the above exist, a development build (`eas build --profile
+   development`) is needed to actually test either flow — neither
+   `expo-apple-authentication` nor `@react-native-google-signin/
+   google-signin` works in Expo Go, since both ship native code.
+4. Story 1.3 (session routing, onboarding, settings) is next — it decides
+   when a signed-out user actually lands on this sign-in screen, which
+   this story intentionally left undone.
+
+Open questions / blockers for the owner (jmyeh51@gmail.com): none blocking
+further work — this story is complete modulo the real credentials itemized
+above, which only the owner can supply.
 
 ### 2026-09-23 — Story 1.4: Terms and privacy placeholder pages
 

@@ -9,7 +9,8 @@
     "userInterfaceStyle": "automatic",
     "ios": {
       "icon": "./assets/expo.icon",
-      "bundleIdentifier": "com.onetruemint.recipeapp"
+      "bundleIdentifier": "com.onetruemint.recipeapp",
+      "usesAppleSignIn": true
     },
     "android": {
       "package": "com.onetruemint.recipeapp",
@@ -35,7 +36,9 @@
           "imageWidth": 76
         }
       ],
-      "@sentry/react-native"
+      "@sentry/react-native",
+      "expo-apple-authentication",
+      "@react-native-google-signin/google-signin"
     ],
     "experiments": {
       "typedRoutes": true,
