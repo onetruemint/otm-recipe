@@ -12,6 +12,13 @@ jest.mock('expo-apple-authentication', () => ({
   AppleAuthenticationScope: { FULL_NAME: 0, EMAIL: 1 },
 }));
 
+jest.mock('expo-crypto', () => ({
+  randomUUID: jest.fn(() => 'raw-nonce-fixture'),
+  digestStringAsync: jest.fn(async () => 'hashed-nonce-fixture'),
+  CryptoDigestAlgorithm: { SHA256: 'SHA-256' },
+  CryptoEncoding: { HEX: 'hex' },
+}));
+
 jest.mock('@react-native-google-signin/google-signin', () => ({
   GoogleSignin: {
     configure: jest.fn(),
@@ -73,9 +80,13 @@ describe('signInWithApple', () => {
 
     const result = await signInWithApple();
 
+    expect(AppleAuthentication.signInAsync).toHaveBeenCalledWith(
+      expect.objectContaining({ nonce: 'hashed-nonce-fixture' }),
+    );
     expect(supabase.auth.signInWithIdToken).toHaveBeenCalledWith({
       provider: 'apple',
       token: 'apple-token',
+      nonce: 'raw-nonce-fixture',
     });
     expect(result).toEqual({ status: 'ok' });
   });

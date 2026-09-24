@@ -1,4 +1,5 @@
 import * as AppleAuthentication from 'expo-apple-authentication';
+import * as Crypto from 'expo-crypto';
 import { GoogleSignin, isErrorWithCode } from '@react-native-google-signin/google-signin';
 
 import { supabase } from '@/lib/supabase';
@@ -21,11 +22,20 @@ function configureGoogleSignInOnce() {
 
 export async function signInWithApple(): Promise<SignInResult> {
   try {
+    // Replay protection: Apple embeds a hash of `nonce` in the identity
+    // token; Supabase re-hashes the raw value we send it and compares.
+    // https://openid.net/specs/openid-connect-core-1_0.html#CodeFlowSteps
+    const rawNonce = Crypto.randomUUID();
+    const hashedNonce = await Crypto.digestStringAsync(Crypto.CryptoDigestAlgorithm.SHA256, rawNonce, {
+      encoding: Crypto.CryptoEncoding.HEX,
+    });
+
     const credential = await AppleAuthentication.signInAsync({
       requestedScopes: [
         AppleAuthentication.AppleAuthenticationScope.FULL_NAME,
         AppleAuthentication.AppleAuthenticationScope.EMAIL,
       ],
+      nonce: hashedNonce,
     });
 
     if (!credential.identityToken) {
@@ -35,6 +45,7 @@ export async function signInWithApple(): Promise<SignInResult> {
     const { error } = await supabase.auth.signInWithIdToken({
       provider: 'apple',
       token: credential.identityToken,
+      nonce: rawNonce,
     });
 
     if (error) {
@@ -71,6 +82,11 @@ export async function signInWithGoogle(): Promise<SignInResult> {
   try {
     configureGoogleSignInOnce();
     await GoogleSignin.hasPlayServices();
+    // No nonce here: unlike expo-apple-authentication, the open-source
+    // @react-native-google-signin/google-signin's signIn() doesn't accept
+    // one (its README lists custom nonce support as a paid-tier feature of
+    // its sibling package). Matches Supabase's own documented example for
+    // this library, which also omits it.
     const response = await GoogleSignin.signIn();
 
     if (response.type === 'cancelled') {

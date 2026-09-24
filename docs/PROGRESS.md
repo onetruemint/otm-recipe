@@ -221,6 +221,45 @@ Open questions / blockers for the owner (jmyeh51@gmail.com): none blocking
 further work — this story is complete modulo the real credentials itemized
 above, which only the owner can supply.
 
+**Addendum, same day — automated security review response.** A push
+review on this PR flagged two things, both addressed or acknowledged
+below rather than silently fixed or ignored:
+
+1. **Auth replay (nonce).** `signInWithIdToken` calls had no `nonce`,
+   so a leaked/intercepted identity token could in principle be replayed.
+   Fixed for Apple: `signInWithApple` now generates a random nonce
+   (`expo-crypto`'s `randomUUID()`), SHA-256-hashes it, sends the hash to
+   `AppleAuthentication.signInAsync({ nonce })`, and sends the raw value
+   to `supabase.auth.signInWithIdToken({ nonce })` — the standard
+   OIDC pattern (hash to the provider, raw to the verifier), confirmed
+   against Supabase's own nonce-handling example for other platforms and
+   against `@supabase/auth-js`'s own type comments. **Not fixed for
+   Google**: the installed `@react-native-google-signin/google-signin`
+   (the free/open-source package, not its paid "Universal Sign In"
+   sibling) has no `nonce` parameter on `signIn()` at all — its own
+   README lists "custom nonce support" as a premium-only feature. This
+   matches Supabase's own documented example for this library, which
+   also omits a nonce for Google. Added a code comment explaining this
+   at the call site so it doesn't read as an oversight later.
+2. **Insecure storage (AsyncStorage for session persistence).** Flagged
+   as MEDIUM: AsyncStorage is unencrypted, so a compromised/rooted
+   device could read the stored refresh token. This is deliberate, not
+   an oversight — it's exactly what this story's task brief specified
+   ("AsyncStorage-backed session persistence per Supabase's official
+   React Native guidance"), and it matches Supabase's own current
+   quickstart guide for React Native verbatim. The suggested
+   alternative, `expo-secure-store`, has a real complication the
+   reviewer itself noted: a ~2KB per-key limit that a session blob can
+   exceed, which would need a wrapping scheme (e.g. an AES key in
+   SecureStore encrypting an AsyncStorage-backed blob) to use safely —
+   a meaningful design decision, not a drop-in swap, and one that
+   affects story 1.3 (session routing) too. Left as AsyncStorage per the
+   brief; flagging here rather than silently accepting the risk.
+   **TODO(owner): decide whether to harden session storage with
+   SecureStore (or an equivalent encrypted-storage wrapper) before
+   public launch,** and if so, story 1.3 or a dedicated follow-up
+   should own it rather than this one.
+
 ### 2026-09-23 — Story 1.4: Terms and privacy placeholder pages
 
 Built:
