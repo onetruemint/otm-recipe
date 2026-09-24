@@ -41,15 +41,12 @@ See `STORIES.md` for the full breakdown of each story.
 
 ## Phase 1 status
 
-- [ ] 1.1 — Schema (enums, profiles, blocks, blocked_terms, RLS)
-- [ ] 1.2 — Sign-in screen
-- [ ] 1.3 — Session persistence, routing, onboarding
+- [x] 1.1 — Database migration & RLS foundation
+- [ ] 1.2 — Supabase Auth config & sign-in screen
+- [ ] 1.3 — Session routing, onboarding, settings
 - [x] 1.4 — Terms and privacy placeholder pages
-- [ ] 1.5 — Temporary settings screen
 
-Story numbering here follows the plan's Section 10 Phase 1 item list
-(`recipe-app-mvp-plan.md`); a full `STORIES.md` breakdown for Phase 1 hasn't
-been written yet — whichever session gets there first should add it.
+See `STORIES.md` for the full breakdown of each story.
 
 ## Log
 
@@ -103,22 +100,136 @@ Decisions / deviations:
   path to serving `/legal` specifically, per the task's own suggestion to
   fall back to a `gh-pages`-style Actions workflow if a plain folder source
   isn't supported.
-- Added a "Phase 1 status" checklist section above (didn't exist yet) with
-  all five Phase 1 stories inferred from the plan's Section 10 item list,
-  since `STORIES.md` doesn't have a Phase 1 breakdown yet. Only checked
-  1.4. Concurrent sessions on 1.1/1.2 may add the same section in parallel
-  — if so, resolve the merge conflict by keeping all five checkboxes with
-  whichever ones are actually done checked, rather than picking one side.
+- The concurrent 1.1 session (database migration & RLS) independently added
+  the same "Phase 1 status" section while this story was in flight, with
+  slightly different story numbering/scope (1.1–1.4, no separate 1.5 for
+  Settings). Reconciled on merge to their numbering — it's already the one
+  live on `main` — and just checked 1.4.
 
 What's left: **TODO(owner or next session): after this PR merges to
 `main`, confirm the Pages deploy workflow ran (Actions tab) and `curl -I`
-both URLs above to confirm they're live (200, not 404).** A full
-`STORIES.md` Phase 1 breakdown (whichever session gets there first).
-Phase 10 replaces these with final, lawyer-reviewed terms/privacy before
-public launch, per the plan.
+both URLs above to confirm they're live (200, not 404).** Phase 10
+replaces these with final, lawyer-reviewed terms/privacy before public
+launch, per the plan.
 
 Open questions / blockers for the owner (jmyeh51@gmail.com): none blocking
 — just the post-merge live-URL confirmation above.
+
+### 2026-09-23 — Story 1.1: Database migration & RLS foundation
+
+Built:
+
+- First migration, `supabase/migrations/20260923021522_create_core_schema.sql`:
+  `profiles`, `blocks`, `blocked_terms` tables exactly per plan Section 6.2;
+  `is_blocked_between(a, b)` (`SECURITY DEFINER`, `STABLE`); RLS on all three
+  tables for R6 (profiles visible to everyone except across a block), R7
+  (blocks visible only to the blocker), R9 (write only your own rows) —
+  `blocked_terms` gets RLS enabled with **no** policies at all, since it's
+  owner-managed via the dashboard (service_role) and no API role needs any
+  access to it; a generic word-filter trigger function
+  (`check_blocked_terms()`, reads the target column via `TG_ARGV[0]` so
+  later phases can attach it to new columns without redefining it) attached
+  to `profiles.username` only; a generic `set_updated_at()` trigger attached
+  to `profiles`; `complete_onboarding(p_username)` (`SECURITY INVOKER`, the
+  default).
+- Seed `supabase/seed/blocked_terms.sql`: 276 single-word, lowercase terms
+  from the open-source LDNOOBW English list
+  (github.com/LDNOOBW/List-of-Dirty-Naughty-Obscene-and-Otherwise-Bad-Words),
+  filtered down from its full 403-entry list to just the single-word
+  alphanumeric entries (dropped 124 multi-word phrases like "2 girls 1 cup"
+  and 3 entries with punctuation/emoji like "g-spot" and "s&m") — the
+  word-filter trigger tokenizes input on non-alphanumeric characters and
+  checks whole-word membership, so a multi-word or punctuated `blocked_terms`
+  row could never match anything and would just be dead data.
+- pgTAP tests, `supabase/tests/` (22 assertions across 5 files, three users —
+  owner, another user, a blocked user — per plan Section 11): profile write
+  protection (R9: can't insert/update/delete another user's profile row);
+  block visibility (R7: only the blocker can read a block row, not the
+  blocked party or a third user; also covers R9 on `blocks` writes); profile
+  visibility across a block (R6, at the RLS-select level on `profiles`
+  directly — symmetric in both directions, uninvolved third party
+  unaffected); the word filter (rejects a whole-word match case-insensitively
+  on insert and on update, accepts a clean username, and specifically does
+  **not** reject a term that only contains a blocked word as a substring,
+  e.g. "analytics99"); `complete_onboarding` (lowercases the username, sets
+  `terms_accepted_at`, and — since the function has no way to target
+  another user's id by design — that the underlying RLS a user would have to
+  bypass to forge someone else's profile row still blocks a direct insert
+  attempt).
+- Regenerated `mobile/src/lib/database.types.ts` for real via `npm run
+  db:types` (Docker **was** available in this session — see below),
+  replacing the Phase 0 hand-written placeholder.
+
+Decisions / deviations:
+
+- **Enum scoping (plan Section 6.1): deferred all five enums** (`visibility`,
+  `ingredient_unit`, `report_target`, `report_reason`, `report_status`) to
+  the migrations that introduce the tables that actually use them (Phase 2
+  for `visibility`/`ingredient_unit`, Phase 9 for the `report_*` enums).
+  None of this phase's tables (`profiles`, `blocks`, `blocked_terms`)
+  reference any of them, so creating them now would just be dead schema
+  sitting unused for several phases. This does mean enum definitions aren't
+  all in one migration, but keeps each migration self-contained around what
+  it actually needs.
+- **Word-filter trigger is attached only to `profiles.username` in this
+  migration**, per the task brief — the function itself
+  (`check_blocked_terms()`) is written generically (target column name is a
+  trigger argument, read via `to_jsonb(NEW) ->> TG_ARGV[0]`) specifically so
+  that Phase 2 (`recipes.title`/`description`, `recipe_ingredients.item`/
+  `note`, `recipe_steps.body`) and Phase 6 (`collections.name`) only need to
+  add a `create trigger ... execute function
+  public.check_blocked_terms('<column>')` in their own migrations, not touch
+  this function. **Flagging for those future sessions: don't forget to wire
+  that trigger up on each new word-filtered column** — nothing else will
+  remind you.
+- Matching algorithm for the word filter: tokenize the (lowercased) column
+  value on runs of non-alphanumeric characters and check exact membership
+  against `blocked_terms`, rather than building a per-term regex. This gives
+  correct whole-word matching without needing to escape arbitrary terms as
+  regex metacharacters (a couple of the source list's entries contain `-`
+  and `&`, which would otherwise need escaping) and is a single indexed
+  join instead of N regex evaluations.
+- `profiles.terms_accepted_at` has **no default** — it's only ever meant to
+  be set once, explicitly, at onboarding (`complete_onboarding` passes
+  `now()` itself), so an implicit default felt like it would mask a caller
+  forgetting to set it via any other path.
+- RLS policies explicitly call `(select auth.uid())` rather than bare
+  `auth.uid()` everywhere, per the plan's performance note in Section 7.
+- **Docker was available in this session** (unlike Phase 0's dev sandbox
+  noted in the 0.3 log entry) — `supabase start`, `supabase db reset`, and
+  `supabase test db` all ran and passed for real against this migration and
+  seed, more than once, including one full reset-from-scratch pass right
+  before finishing. Also regenerated `mobile/src/lib/database.types.ts` for
+  real (see above) — the Phase 0 placeholder is gone. `mobile/.env` still
+  points at the **production** project, per the Phase 0.3 TODO that's still
+  open — the owner should still point local dev at the local stack's
+  URL/anon key day to day; not changed here since it's outside this story's
+  scope and the production project has no tables yet regardless.
+- pgTAP role-switching pattern used throughout (no external test-helper
+  extension): fixtures are inserted directly by the `postgres` role (a
+  superuser, so it bypasses RLS automatically) inside `auth.users` and
+  `public.profiles`/`public.blocks`; assertions then run under `set local
+  role authenticated; set local request.jwt.claim.sub = '<uuid>';`, which is
+  exactly what `auth.uid()` reads (confirmed by reading its actual
+  definition in the running local Postgres image). Deliberately did not pull
+  in `basejump-supabase_test_helpers` (which needs `dbdev`/`pg_tle` and a
+  network call to database.dev during `db reset`) — this keeps `db reset`
+  and CI fully offline-capable.
+- `npm ci` was needed in `/mobile` before `db:types`/`typecheck`/`lint`/
+  `test` would run in this session — `node_modules` wasn't present in this
+  worktree. `npm run typecheck`, `npm run lint`, and `npm test` all pass
+  with the regenerated types in place.
+
+What's left: stories 1.2 (Supabase Auth config & sign-in screen), 1.3
+(session routing, onboarding, settings), 1.4 (terms/privacy placeholder
+pages) — see the Phase 1 breakdown just added to `STORIES.md`. Did not touch
+`/mobile` auth screens, sign-in, or session routing, per the task brief —
+that's 1.2/1.3.
+
+Open questions / blockers for the owner (jmyeh51@gmail.com): none new. The
+Phase 0.3 TODO (point `mobile/.env` at local Supabase for day-to-day dev, and
+upgrade `mint-recipe-prod` to a paid plan before beta) is still open and
+still the owner's call.
 
 ### 2026-09-22 — Story 0.5: CI
 
